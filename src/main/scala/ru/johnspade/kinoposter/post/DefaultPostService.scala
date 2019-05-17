@@ -5,18 +5,19 @@ import java.net.URL
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
+import cats.data.NonEmptyList
 import cats.effect.Sync
 import cats.implicits._
 import ru.johnspade.kinoposter.KinoposterApp.toMoscowDateTime
-import ru.johnspade.kinoposter.image.ImageIoInterpreter
+import ru.johnspade.kinoposter.image.ImageIo
 import ru.johnspade.kinoposter.kp.KpClient
 import ru.johnspade.kinoposter.movie.Movie
 import ru.johnspade.kinoposter.vk.VkApi
 
-class DefaultPostService[F[_] : Sync](vk: VkApi[F], kp: KpClient[F], imageIo: ImageIoInterpreter[F]) extends PostService[F] {
+class DefaultPostService[F[_] : Sync](vk: VkApi[F], kp: KpClient[F], imageIo: ImageIo[F]) extends PostService[F] {
 
-  override def createPosts(movies: List[Movie], start: Instant): F[List[Post]] =
-    movies.traverseWithIndexM((m, i) => createPost(m, start, i))
+  override def createPosts(movies: NonEmptyList[Movie], start: Instant): F[List[Post]] =
+    movies.traverseWithIndexM((m, i) => createPost(m, start, i)).map(_.toList)
 
   private val intervals = List(6, 12, 6)
 

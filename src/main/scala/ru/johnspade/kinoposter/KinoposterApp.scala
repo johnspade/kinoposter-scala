@@ -1,8 +1,8 @@
 package ru.johnspade.kinoposter
 
 import java.nio.file.Paths
-import java.time.{Instant, LocalDateTime, ZoneId}
 import java.time.format.DateTimeFormatter
+import java.time.{Instant, LocalDateTime, ZoneId}
 
 import cats.data.NonEmptyList
 import cats.effect._
@@ -15,18 +15,21 @@ import doobie._
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
 import pureconfig.generic.auto._
 import pureconfig.module.catseffect._
-import ru.johnspade.kinoposter.image.ImageIoInterpreter
-import ru.johnspade.kinoposter.kp.KpClientInterpreter
-import ru.johnspade.kinoposter.movie.DoobieMovieRepositoryInterpreter
+import ru.johnspade.kinoposter.image.{ImageIo, ImageIoInterpreter}
+import ru.johnspade.kinoposter.kp.{KpClient, KpClientInterpreter}
+import ru.johnspade.kinoposter.movie.{DoobieMovieRepositoryInterpreter, MovieRepository}
 import ru.johnspade.kinoposter.post.DefaultPostService
 import ru.johnspade.kinoposter.vk.{VkApi, VkApiInterpeter}
 
+import scala.concurrent.ExecutionContext
+
 object KinoposterApp extends IOApp {
 
-  private val kp = new KpClientInterpreter[IO]
-  private val imageIo = new ImageIoInterpreter[IO]
   private val dateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yy HH:mm")
   private val moscowZoneId = ZoneId.of("Europe/Moscow")
+  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+  private val kp: KpClient[IO] = new KpClientInterpreter[IO]
+  private val imageIo: ImageIo[IO] = new ImageIoInterpreter[IO]
 
   private def calcStart[F[_] : Sync](vk: VkApi[F]): F[Instant] = for {
     postponed <- vk.getPosts(WallGetFilter.POSTPONED, 100)
@@ -47,11 +50,12 @@ object KinoposterApp extends IOApp {
   override def run(args: List[String]): IO[ExitCode] = for {
     logger <- Slf4jLogger.create[IO]
     conf <- loadConfigFromFilesF[IO, Config](NonEmptyList.one(Paths.get("config.properties")))
-    _ <- logger.info(s"Заданное количество фильмов: ${conf.app.moviesCount}")
     xa = Transactor.fromDriverManager[IO]("org.postgresql.Driver", s"jdbc:postgresql:${conf.app.database}", null, null)
-    repo = new DoobieMovieRepositoryInterpreter(xa)
-    movies <- repo.getMovies(conf.app.moviesCount)
-    _ <- logger.info(s"Выбранные фильмы: ${movies.map(m => s"${m.nameRu} (${m.id})").mkString(", ")}")
+    repo: MovieRepository[IO] = new DoobieMovieRepositoryInterpreter(xa)
+    moviesCount = if (conf.app.moviesCount < 1) 1 else conf.app.moviesCount
+    _ <- logger.info(s"Заданное количество фильмов: $moviesCount")
+    movies <- repo.getMovies(moviesCount)
+    _ <- logger.info(s"Выбранные фильмы: ${movies.map(m => s"${m.nameRu} (${m.id})").toList.mkString(", ")}")
     vk = new VkApiInterpeter[IO](
       new VkApiClient(new HttpTransportClient()),
       new UserActor(conf.vk.userId, conf.vk.accessToken),
