@@ -6,7 +6,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 import cats.data.NonEmptyList
-import cats.effect.Sync
+import cats.effect.{Sync, Timer}
 import cats.implicits._
 import ru.johnspade.kinoposter.KinoposterApp.toMoscowDateTime
 import ru.johnspade.kinoposter.image.ImageIo
@@ -14,7 +14,10 @@ import ru.johnspade.kinoposter.kp.KpClient
 import ru.johnspade.kinoposter.movie.Movie
 import ru.johnspade.kinoposter.vk.VkApi
 
-class DefaultPostService[F[_] : Sync](vk: VkApi[F], kp: KpClient[F], imageIo: ImageIo[F]) extends PostService[F] {
+import scala.concurrent.duration._
+
+class DefaultPostService[F[_] : Sync](vk: VkApi[F], kp: KpClient[F], imageIo: ImageIo[F], timer: Timer[F])
+  extends PostService[F] {
 
   override def createPosts(movies: NonEmptyList[Movie], start: Instant): F[List[Post]] =
     movies.traverseWithIndexM((m, i) => createPost(m, start, i)).map(_.toList)
@@ -40,8 +43,8 @@ class DefaultPostService[F[_] : Sync](vk: VkApi[F], kp: KpClient[F], imageIo: Im
   private def getImages(stills: List[String]): F[List[BufferedImage]] =
     stills.map(s => imageIo.getImage(new URL(s))).sequence.map(l => l.flatten)
 
-  private def createPhotoAttachments(stills: List[String], uploadUrl: String): F[List[String]] =
-    getImages(stills).flatMap(l => l.map(i => createPhotoAttachmentFromImage(i, uploadUrl)).sequence)
+  private def createPhotoAttachments(images: List[String], uploadUrl: String): F[List[String]] =
+    getImages(images).flatMap(l => l.map(i => createPhotoAttachmentFromImage(i, uploadUrl) <* timer.sleep(340.millis)).sequence)
 
   private def createAttachments(movie: Movie, uploadUrl: String): F[List[String]] = {
     val link = s"https://www.kinopoisk.ru/film/${movie.id}"

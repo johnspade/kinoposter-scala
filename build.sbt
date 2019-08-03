@@ -22,3 +22,8 @@ libraryDependencies ++= Seq(
   "io.chrisdavenport" %% "log4cats-slf4j" % "0.3.0",
   "ch.qos.logback" % "logback-classic" % "1.1.10"
 )
+
+assemblyMergeStrategy in assembly := {
+  case PathList("META-INF", _) => MergeStrategy.discard
+  case _ => MergeStrategy.first
+}

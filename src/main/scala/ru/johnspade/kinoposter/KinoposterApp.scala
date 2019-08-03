@@ -61,7 +61,7 @@ object KinoposterApp extends IOApp {
       new UserActor(conf.vk.userId, conf.vk.accessToken),
       conf.vk.groupId
     )
-    postService = new DefaultPostService[IO](vk, kp, imageIo)
+    postService = new DefaultPostService[IO](vk, kp, imageIo, IO.timer(ExecutionContext.global))
     start <- calcStart[IO](vk)
     posts <- postService.createPosts(movies, start)
     _ <- logger.info(
